@@ -1,0 +1,284 @@
+--// เอาไปดัดแปลงไป พวกไม่มีปัญญาทำสคริป by XeroHub
+--// https://discord.gg/Xa3gasvhuM
+--// สคริป Arsenal Aimbot พื้นฐาน เอาไว้ศึกษา หรือจะดัดแปลงก็ได้ 
+
+local Players = game:GetService("Players") 
+-- Players = จัดการผู้เล่นทั้งหมดในเกม
+
+local RunService = game:GetService("RunService")
+-- RunService = ใช้รันโค้ดทุกเฟรม (RenderStepped)
+
+local Camera = workspace.CurrentCamera
+-- Camera = กล้องของมึงอะ ใช้หมุนเล็งไปหาเป้าหมาย
+
+local LocalPlayer = Players.LocalPlayer
+-- LocalPlayer = ตัวมึงเอง
+
+
+------------------------
+--// UI Setup
+------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ArsenalAimbotUI"
+ScreenGui.Parent = game.CoreGui
+-- ใส่ CoreGui เพื่อให้ executor แสดง UI ได้
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 260, 0, 340)
+Frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+-- Active + Draggable = ลาก UI ได้
+
+
+------------------------
+--// Title
+------------------------
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1, -40, 0, 30)
+Title.Position = UDim2.new(0, 10, 0, 5)
+Title.Text = "Arsenal Aimbot"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.BackgroundTransparency = 1
+Title.TextXAlignment = Enum.TextXAlignment.Left
+-- ชื่อ UI
+
+
+
+--// Close Button 
+
+local CloseBtn = Instance.new("TextButton", Frame)
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+CloseBtn.Text = "❌"
+CloseBtn.TextColor3 = Color3.new(1,1,1)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 16
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+-- กด ❌ = ปิด UI ทั้งหมด
+
+
+
+--// Button Creator
+
+local function Button(text, y)
+    local b = Instance.new("TextButton", Frame)
+    b.Size = UDim2.new(1, -20, 0, 34)
+    b.Position = UDim2.new(0, 10, 0, y)
+    b.BackgroundColor3 = Color3.fromRGB(40,40,40)
+    b.TextColor3 = Color3.new(1,1,1)
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 14
+    b.Text = text
+    return b
+end
+-- ฟังก์ชันสร้างปุ่ม เพื่อลดโค้ดซ้ำ
+
+
+--// Buttons
+
+local AimbotBtn = Button("Aimbot: OFF", 45)
+local TargetBtn = Button("Target: Head", 85)
+local WallBtn   = Button("WallCheck: ON", 125)
+local TeamBtn   = Button("TeamCheck: ON", 165)
+local KillBtn   = Button("KillCheck: ON", 205)
+local EspBtn    = Button("ESP: OFF", 245)
+
+
+
+--// Variables
+
+local Aimbot = false
+-- เปิด/ปิด Aimbot
+
+local TargetPart = "Head"
+-- ส่วนที่เล็ง (Head / HumanoidRootPart)
+
+local WallCheck = true
+-- เช็คกำแพง
+
+local TeamCheck = true
+-- ไม่เล็งทีมเดียวกัน
+
+local KillCheck = true
+-- ไม่เล็งศพ / ตัวตาย
+
+local ESP = false
+-- เปิด/ปิด ESP Glow
+
+local Smoothness = 0.15
+-- ความเร็วตอน CamLock(ยิ่งเยอะ = ล็อคแรง)  -- แนะนำ 45
+
+
+
+--// WallCheck
+
+local function CanSee(pos, targetChar)
+    if not WallCheck then return true end
+
+    local origin = Camera.CFrame.Position
+    local direction = pos - origin
+    local distance = direction.Magnitude
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {
+        LocalPlayer.Character,
+        targetChar
+    }
+    params.IgnoreWater = true
+
+    local result = workspace:Raycast(
+        origin,
+        direction.Unit * distance,
+        params
+    )
+
+    return result == nil
+end
+-- Raycast จากกล้องไปหาเป้า
+-- ถ้าไม่ชนอะไร = มองเห็นจริง
+
+
+
+--// KillCheck
+
+local function IsAlive(character)
+    if not KillCheck then return true end
+
+    local hum = character:FindFirstChild("Humanoid")
+    if not hum then return false end
+    if hum.Health <= 0 then return false end
+    if hum:GetState() == Enum.HumanoidStateType.Dead then return false end
+
+    return true
+end
+-- กันไม่ให้ Aimbot ไปล็อคศพ
+
+
+
+--// Get Closest Target
+
+local function GetClosestPart()
+    local closest = nil
+    local dist = math.huge
+
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer
+        and plr.Character
+        and IsAlive(plr.Character) then
+
+            if TeamCheck and plr.Team == LocalPlayer.Team then
+                continue
+            end
+
+            local part = plr.Character:FindFirstChild(TargetPart)
+            if part and CanSee(part.Position, plr.Character) then
+                local mag = (part.Position - Camera.CFrame.Position).Magnitude
+                if mag < dist then
+                    dist = mag
+                    closest = part
+                end
+            end
+        end
+    end
+
+    return closest
+end
+-- เลือกเป้าที่ใกล้กล้องที่สุด + ผ่านทุกเงี่ยนไข
+
+
+
+--// ESP Glow (เรืองแสง)
+
+local function UpdateESP()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local h = plr.Character:FindFirstChild("ESP_GLOW")
+
+            if not h then
+                h = Instance.new("Highlight")
+                h.Name = "ESP_GLOW"
+                h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                h.Parent = plr.Character
+            end
+
+            if ESP then
+                h.Enabled = true
+                if plr.Team == LocalPlayer.Team then
+                    h.FillColor = Color3.fromRGB(0,120,255)
+                    h.OutlineColor = Color3.fromRGB(0,180,255)
+                else
+                    h.FillColor = Color3.fromRGB(255,0,0)
+                    h.OutlineColor = Color3.fromRGB(255,80,80)
+                end
+            else
+                h.Enabled = false
+            end
+        end
+    end
+end
+-- ESP เรืองแสง:
+-- ทีมเดียวกัน = น้ำเงิน
+-- ศัตรู = แดง
+
+
+
+--// Button
+
+AimbotBtn.MouseButton1Click:Connect(function()
+    Aimbot = not Aimbot
+    AimbotBtn.Text = "Aimbot: " .. (Aimbot and "ON" or "OFF")
+end)
+
+TargetBtn.MouseButton1Click:Connect(function()
+    TargetPart = (TargetPart == "Head") and "HumanoidRootPart" or "Head"
+    TargetBtn.Text = "Target: " .. (TargetPart == "Head" and "Head" or "Torso")
+end)
+
+WallBtn.MouseButton1Click:Connect(function()
+    WallCheck = not WallCheck
+    WallBtn.Text = "WallCheck: " .. (WallCheck and "ON" or "OFF")
+end)
+
+TeamBtn.MouseButton1Click:Connect(function()
+    TeamCheck = not TeamCheck
+    TeamBtn.Text = "TeamCheck: " .. (TeamCheck and "ON" or "OFF")
+end)
+
+KillBtn.MouseButton1Click:Connect(function()
+    KillCheck = not KillCheck
+    KillBtn.Text = "KillCheck: " .. (KillCheck and "ON" or "OFF")
+end)
+
+EspBtn.MouseButton1Click:Connect(function()
+    ESP = not ESP
+    EspBtn.Text = "ESP: " .. (ESP and "ON" or "OFF")
+    UpdateESP()
+end)
+
+
+--// Main Loop
+
+RunService.RenderStepped:Connect(function()
+    if Aimbot then
+        local target = GetClosestPart()
+        if target then
+            local camCF = Camera.CFrame
+            local newCF = CFrame.new(camCF.Position, target.Position)
+            Camera.CFrame = camCF:Lerp(newCF, Smoothness)
+        end
+    end
+
+    if ESP then
+        UpdateESP()
+    end
+end)
