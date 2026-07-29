@@ -1,0 +1,118 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local flySpeed = 19
+local flying = true
+local collectedCoins = {}
+
+local function getCharacter()
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+local function getNearestCoin(root)
+    local nearest
+    local distance = math.huge
+
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v.Name == "Coin_Server"
+            and v:IsA("BasePart")
+            and v:FindFirstChild("TouchInterest")
+            and v:FindFirstChild("CoinVisual")
+            and not collectedCoins[v]
+            and not v:GetAttribute("Collected") then
+
+            local dist = (root.Position - v.Position).Magnitude
+
+            if dist < distance then
+                distance = dist
+                nearest = v
+            end
+        end
+    end
+
+    return nearest
+end
+
+local function setNoCollide(character)
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+end
+
+local function noclipLoop(character)
+    local conn
+
+    conn = character.DescendantAdded:Connect(function(part)
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end)
+
+    task.spawn(function()
+        while flying and character.Parent do
+            setNoCollide(character)
+            RunService.Stepped:Wait()
+        end
+
+        if conn then
+            conn:Disconnect()
+        end
+    end)
+end
+
+local function flyTo(coin)
+    local character = getCharacter()
+    local hrp = character:WaitForChild("HumanoidRootPart")
+    local hum = character:WaitForChild("Humanoid")
+
+    pcall(function()
+        hrp:SetNetworkOwner(player)
+    end)
+
+    hum.PlatformStand = true
+
+    pcall(function()
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+    end)
+
+    while flying
+        and coin.Parent
+        and not coin:GetAttribute("Collected") do
+
+        local direction = (coin.Position - hrp.Position).Unit
+
+        hrp.AssemblyLinearVelocity = direction * flySpeed
+        hrp.CFrame = CFrame.new(hrp.Position, coin.Position)
+
+        if (hrp.Position - coin.Position).Magnitude < 2 then
+            hrp.CFrame = CFrame.new(coin.Position)
+            break
+        end
+
+        RunService.RenderStepped:Wait()
+    end
+
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    collectedCoins[coin] = true
+end
+
+local character = getCharacter()
+
+noclipLoop(character)
+
+task.spawn(function()
+    while flying do
+        local hrp = character:WaitForChild("HumanoidRootPart")
+
+        local coin = getNearestCoin(hrp)
+
+        if coin then
+            flyTo(coin)
+        else
+            task.wait(1)
+        end
+    end
+end)
